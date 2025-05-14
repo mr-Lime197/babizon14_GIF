@@ -46,4 +46,4 @@ async def handle_form(request: Request, text_input: str = Form(...)):
     })
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="192.168.89.169", port=8080)
+    uvicorn.run(app, host="192.168.89.169", port=80)
