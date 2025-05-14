@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoTokenizer, AutoModel,  BertTokenizer, BertModel
 from pydantic import BaseModel
 import torch
 import json
@@ -9,8 +9,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 # Загрузка модели и токенизатора
-tokenizer = AutoTokenizer.from_pretrained("cointegrated/rubert-tiny2")
-model = AutoModel.from_pretrained("cointegrated/rubert-tiny2")
+tokenizer = AutoTokenizer.from_pretrained("squeezebert/squeezebert-uncased")
+model = AutoModel.from_pretrained("squeezebert/squeezebert-uncased")
+
+#tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+#model = BertModel.from_pretrained('bert-base-uncased')
 with open("static/babiz/link.json", 'r', encoding="UTF-8") as s:
     video=json.load(s)
 
@@ -63,4 +66,4 @@ async def handle_form(request: Request, text_input: str = Form(...)):
     })
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8080)        
+    uvicorn.run(app, host="10.89.0.240", port=8080)        

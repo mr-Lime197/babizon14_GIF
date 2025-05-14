@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Поиск гифок</title>
+    <title>babizon14</title>
     <style>
         body {
             margin: 0;
@@ -112,13 +112,14 @@
 
         {% if result %}
         <div class="result">
-            <h3>Самая похожая гифка на "{{ result[0] }}":</h3><br>"{{ result[1] }}" 
+            <h3>Самая похожая гифка на "{{ result[0] }}":</h3><br>"{{ result[1] }}"
         </div>
         {% endif %}
 
         <div class="video-section">
             <video id="videoPlayer" autoplay loop muted playsinline>
                 <source id="videoSource" src="" type="video/mp4">
+                <source id="videoSource" src="" type="video/MOV">
                 Ваш браузер не поддерживает видео тег.
             </video>
         </div>
