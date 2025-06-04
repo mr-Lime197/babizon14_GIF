@@ -29,7 +29,6 @@ def upload_to_server(
         files = {"file": (file.filename, file.file.read(), file.content_type)},
         data = {"meta": meta.model_dump_json()},
     )
-
 if __name__ == "__main__":
      import uvicorn 
      uvicorn.run(app, host="127.0.0.1", port=8080)

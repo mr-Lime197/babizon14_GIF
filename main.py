@@ -10,6 +10,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import  create_engine, Column, Integer, String, LargeBinary, ForeignKey
 from sqlalchemy.orm import DeclarativeBase, Session, relationship
+from fastapi.responses import FileResponse
+from fastapi.responses import Response
+import io
 database="sqlite:///data.db"
 
 class Base(DeclarativeBase): pass
@@ -31,7 +34,6 @@ class Gif_info_db(Base):
     text = Column(String)
     file = Column(LargeBinary)
     emb=relationship("Gif_emb_db", back_populates="info")
-
 class Model:
     def __init__(self):
         self.__tokenizer=AutoTokenizer.from_pretrained("squeezebert/squeezebert-uncased")
@@ -44,26 +46,9 @@ class Model:
             .squeeze()\
             .numpy()
         return embeddings.tobytes()
-    def dist(point_1,point_2):
+    def dist(self, point_1,point_2):
         diff = np.array(point_1) - np.array(point_2)
         return(np.dot(diff, diff))
-    
-
-#tokenizer = AutoTokenizer.from_pretrained("squeezebert/squeezebert-uncased")
-#model = AutoModel.from_pretrained("squeezebert/squeezebert-uncased")
-
-# emb_seq=dict()
-# for seq in video.keys():
-#     emb=get_emb(seq)
-#     emb_seq[seq]=emb
-
-# def sim(text):
-#     emb=get_emb(text)
-#     best=list(emb_seq.keys())[0]
-#     for seq in emb_seq.keys():
-#         if(dist(emb, emb_seq[best])> dist(emb, emb_seq[seq])):
-#             best=seq
-#     return best
 class db:
     def __init__(self, path:str, model:Model):
         db.__path=path
@@ -97,36 +82,23 @@ class db:
         with Session(autoflush=False, bind=db.__engine) as s:
             if s.query(Gif_info_db).filter(Gif_info_db.file==file).count()==0:
                 logging.error("gif is not exist")
-                return
+                return -1
             return s.query(Gif_info_db).filter(Gif_info_db.file==file).first().id
-            
-            
-
-        
-
-        
-            
-                
-
-
-# app = FastAPI()
-# app.mount("/static", StaticFiles(directory="static"), name="static")
-# templates = Jinja2Templates(directory="templates")
-# @app.get("/")
-# async def read_form(request: Request):
-#     return templates.TemplateResponse("index.html", {"request": request})
-# @app.post("/submit")
-# async def handle_form(request: Request, text_input: str = Form(...)):
-#     global video
-#     s=sim(text_input)
-#     return templates.TemplateResponse("index.html", {
-#         "request": request,
-#         "result": (text_input, s),
-#         "video": video[s]
-#     })
-# @app.post("/add_gif")
-# async def add_gif(Gif: Gif_added):
-#     pass
+    def get_sim(self, text: str):
+        model=self.__model
+        bestsim=0
+        bestid=-1
+        emb=np.frombuffer(model.get_emb(text), dtype=np.float32)
+        with Session(autoflush=False, bind=self.__engine) as db:
+            h=db.query(Gif_emb_db)
+            for row in h:
+                curemb=np.frombuffer(row.embeding, dtype=np.float32)
+                sim=model.dist(emb, curemb)
+                if(sim<bestsim or bestid==-1):
+                    bestsim=sim
+                    bestid=row.id_gif
+            h=db.query(Gif_info_db).filter(Gif_info_db.id==bestid).first()
+            return (h.text, h.file)
 app = FastAPI()
 model=Model()
 base=db(database, model)
@@ -138,14 +110,29 @@ def upload_file_bytes(
     meta_data = FileMeta(**json.loads(meta))
     base.add_gif(Gif_added(text=meta_data.text, video=file.file.read()))
     return
-@app.post("/file/add_desc")
-def add_desc(gif: Gif_added):
-    id=base.get_id_gif(bytes(gif.video))
-    base.add_description(gif.text, id)
-    return
+# @app.post("/file/add_desc")
+# def add_desc(
+#     file: UploadFile = File(...),
+#     meta: str = Form(...),
+# ):
+#     meta_data = FileMeta(**json.loads(meta))
+#     id=base.get_id_gif(file.file.read())
+#     if(id==-1):
+#         return
+#     base.add_description(meta_data.text, id)
+#     return
 # def upload_file(file: UploadFile):
 #   base.add_gif(Gif_added(text="gay2", video=file.file.read()))
 #  return 
+@app.get("/sim")
+def get_sim(text: str):
+    text_gif, file=base.get_sim(text)
+    h=text_gif.encode()
+    return Response(
+        content=file,
+        media_type="application/octet-stream",
+        headers={"text_gif": str(h, encoding="Latin-1")}
+    )
 if __name__ == "__main__":
      logging.basicConfig(filename='lg.log')
      import uvicorn
