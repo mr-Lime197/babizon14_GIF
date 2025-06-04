@@ -19,14 +19,8 @@ from telegram.ext import (
     ConversationHandler
 )
 ASK_TEXT = 1
-# Настройка логгирования
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
 
-TOKEN = ""  # Замените на реальный токен
+TOKEN = ""
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик команды /start"""
@@ -59,7 +53,6 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 def main() -> None:
     application = Application.builder().token(TOKEN).build()
     
-    # Регистрация обработчиков команд
     application.add_handler(CommandHandler("start", start))
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("gif", gif_text)],
@@ -72,7 +65,6 @@ def main() -> None:
         fallbacks=[CommandHandler("cancel", cancel)]
     )
     application.add_handler(conv_handler)
-    # Запуск бота
     application.run_polling()
 
 if __name__ == "__main__":
