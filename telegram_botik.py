@@ -21,7 +21,7 @@ ROOT=1
 ADD=2
 DESC=3
 GLOB=4
-TOKEN = "7853184472:AAG8kXXYJTPlesfld3H7OwDOlliBueDxHN0"
+TOKEN = ""
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик команды /start"""
     user = update.effective_user
