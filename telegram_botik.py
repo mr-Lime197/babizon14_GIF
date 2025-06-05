@@ -21,11 +21,14 @@ ROOT=1
 ADD=2
 DESC=3
 GLOB=4
-TOKEN = ""
+TOKEN = "7853184472:AAG8kXXYJTPlesfld3H7OwDOlliBueDxHN0"
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик команды /start"""
     user = update.effective_user
-    await update.message.reply_text(f"Babizon14_bot приветствует тебя, введи описание гифки")
+    await update.message.reply_text(
+        text=f"Привет, устал искать подходящий гиф в канале <a href='https://t.me/babizon14'> Овсе гифы</a>?,тогда тебе сюда!\n Просто опиши гиф который ищешь",
+        parse_mode="HTML"
+        )
     return GLOB
 
 async def send_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -41,38 +44,39 @@ async def send_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 async def root(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    menu = [["add gif", "cancel"]]
+    menu = [["Добавить новую гифку", "назад"]]
     reply_markup = ReplyKeyboardMarkup(menu, resize_keyboard=True)
     await update.message.reply_text(
-        "Ты зашел под правами root",
+        "Выполнен вход с правами root",
         reply_markup=reply_markup
     )
     return ROOT
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    if text == "cancel":
+    if text == "назад":
         await update.message.reply_text(
-            "Отменено",
+            "выход из root",
             reply_markup=ReplyKeyboardRemove()
         )
         return ConversationHandler.END
-    if text == "add gif":
-        menu = [["cancel"]]
+    if text == "Добавить новую гифку":
+        menu = [["назад"]]
         await update.message.reply_text(
-            "Пришлите гифку в формате mp4",
+            "Отправь гифку",
             reply_markup=ReplyKeyboardMarkup(menu, resize_keyboard=True)
         )
         return ADD
 async def menu2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.text=="cancel":
-        menu=[["add gif", "cancel"]]
+    if update.message.text=="назад":
+        menu=[["Добавить новую гифку"],
+              ["назад"]]
         reply_markup = ReplyKeyboardMarkup(menu, resize_keyboard=True)
+        # await update.message.reply_text(
+        #     "отменено",
+        # )
         await update.message.reply_text(
-            "отменено",
-        )
-        await update.message.reply_text(
-            "Ты зашел под правами root",
+            "Выполнен вход с правами root",
             reply_markup=reply_markup
         )
         return ROOT
@@ -87,7 +91,7 @@ async def gif(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif update.message.video:
         file_id = update.message.video.file_id
     else:
-        await update.message.reply_text("пришлите видео в формате MP4")
+        await update.message.reply_text("Отправь гифку")
         return ADD
     
     file = await context.bot.get_file(file_id)
@@ -98,9 +102,9 @@ async def gif(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    if text=="cancel":
-        await update.message.reply_text("Отменено")
-        await update.message.reply_text("Пришлите гифку в формате mp4")
+    if text=="назад":
+        #await update.message.reply_text("Отменено")
+        await update.message.reply_text("Отправь гифку")
         return ADD
     gif_data = context.user_data.get('gif_data')
     if not gif_data:
@@ -117,8 +121,8 @@ async def desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Гифка успешно добавленна")
     else:
         await update.message.reply_text("ERROR Гифка уже была добавленна ранее")
-    
-    menu = [["add gif", "cancel"]]
+    menu=[["Добавть новую гифку"],
+          ["назад"]]
     await update.message.reply_text(
         "Выберите действие:",
         reply_markup=ReplyKeyboardMarkup(menu, resize_keyboard=True)
