@@ -72,12 +72,12 @@ class db:
         with Session(autoflush=False, bind=db.__engine) as s:
             if s.query(Gif_info_db).filter(Gif_info_db.file==gif.file).first():
                 logging.error(f'GIFs: {gif.text} is exist')
-                return
+                return "-1"
             s.add(gif)
             logging.info(f"added gif {Gif.text}")
             s.commit()
             self.add_description(txt_desc=gif.text, gif_id=gif.id)
-        return
+        return "0"
     def get_id_gif(self, file:File):
         with Session(autoflush=False, bind=db.__engine) as s:
             if s.query(Gif_info_db).filter(Gif_info_db.file==file).count()==0:
@@ -108,8 +108,10 @@ def upload_file_bytes(
     meta: str = Form(...),
 ):
     meta_data = FileMeta(**json.loads(meta))
-    base.add_gif(Gif_added(text=meta_data.text, video=file.file.read()))
-    return
+    status = base.add_gif(Gif_added(text=meta_data.text, video=file.file.read()))
+    return Response(
+        headers={"status":status}
+    )
 # @app.post("/file/add_desc")
 # def add_desc(
 #     file: UploadFile = File(...),

@@ -24,6 +24,7 @@ def upload_to_server(
     text: str = Form(...),
 ):
     meta = FileMeta(text=text)
+    print(file.content_type)
     response=requests.post(
         url="http://127.0.0.1:80/file/upload-file",
         files = {"file": (file.filename, file.file.read(), file.content_type)},
