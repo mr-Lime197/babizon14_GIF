@@ -8,7 +8,7 @@ import logging
 from fastapi import FastAPI, Form, Request, File, UploadFile
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import  create_engine, Column, Integer, String, LargeBinary, ForeignKey
+from sqlalchemy import  create_engine, Column, Integer, String, LargeBinary, ForeignKey, delete
 from sqlalchemy.orm import DeclarativeBase, Session, relationship
 from fastapi.responses import FileResponse
 from fastapi.responses import Response
@@ -18,6 +18,8 @@ database="sqlite:///data.db"
 class Base(DeclarativeBase): pass
 class FileMeta(BaseModel):
     text: str
+class Desc(BaseModel):
+    lst:list
 class Gif_added(BaseModel):
     text: str
     video: bytes
@@ -60,37 +62,44 @@ class db:
             gif_emb=Gif_emb_db(description=txt_desc, embeding=db.__model.get_emb(txt_desc))
             if s.query(Gif_info_db).filter(Gif_info_db.id==gif_id).count()==0:
                 logging.error(f"gif with id {gif_id} is not exist")
-                return
+                return {"status":404}
             gif_info=s.query(Gif_info_db).filter(Gif_info_db.id==gif_id).first()
             gif_emb.info=gif_info
             s.add(gif_emb)
             logging.info(f"description {txt_desc} add for gif {gif_id}")
             s.commit()
-        return
-    def add_gif(self, Gif:Gif_added):
+        return {"status":200}
+    def add_gif(self, Gif:Gif_added) -> dict:
         gif=Gif_info_db(text=Gif.text, file=Gif.video)
         with Session(autoflush=False, bind=db.__engine) as s:
             if s.query(Gif_info_db).filter(Gif_info_db.file==gif.file).first():
                 logging.error(f'GIFs: {gif.text} is exist')
-                return "-1"
+                return {"status":404}
             s.add(gif)
             logging.info(f"added gif {Gif.text}")
             s.commit()
             self.add_description(txt_desc=gif.text, gif_id=gif.id)
-        return "0"
-    def get_id_gif(self, file:File):
+        return {"status":200}
+    
+
+    def get_id_gif(self, file:bytes) -> dict:
         with Session(autoflush=False, bind=db.__engine) as s:
             if s.query(Gif_info_db).filter(Gif_info_db.file==file).count()==0:
                 logging.error("gif is not exist")
-                return -1
-            return s.query(Gif_info_db).filter(Gif_info_db.file==file).first().id
-    def get_sim(self, text: str):
+                return {"status":404, "data":None}
+            return {"status":200, "data":s.query(Gif_info_db).filter(Gif_info_db.file==file).first().id}
+        
+
+    def get_sim(self, text: str) -> dict:
         model=self.__model
         bestsim=0
         bestid=-1
         emb=np.frombuffer(model.get_emb(text), dtype=np.float32)
         with Session(autoflush=False, bind=self.__engine) as db:
             h=db.query(Gif_emb_db)
+            if h.count()==0:
+                logging.error("database is empty")
+                return {"status":500, "data":None}
             for row in h:
                 curemb=np.frombuffer(row.embeding, dtype=np.float32)
                 sim=model.dist(emb, curemb)
@@ -98,7 +107,23 @@ class db:
                     bestsim=sim
                     bestid=row.id_gif
             h=db.query(Gif_info_db).filter(Gif_info_db.id==bestid).first()
-            return (h.text, h.file)
+            return {"status":200, "data":(h.text, h.file)}
+        
+
+    def get_cnt_desc(self, gif_id: int) -> dict:
+        with Session(autoflush=False, bind=db.__engine) as s:
+            return {"status":200, "data":s.query(Gif_emb_db).filter(Gif_emb_db.id_gif==gif_id).count()}
+        
+
+    def del_gif(self, gif_id:int) ->dict:
+        cnt=self.get_cnt_desc(gif_id)
+        if cnt["status"]==200 and cnt["data"]>0:
+            with Session(autoflush=False, bind=db.__engine) as s:
+                s.query(Gif_info_db).filter(Gif_info_db.id==gif_id).delete()
+                s.query(Gif_emb_db).filter(Gif_emb_db.id_gif==gif_id).delete()
+                s.commit()
+            return {"status":200}
+        return {"status":404}
 app = FastAPI()
 model=Model()
 base=db(database, model)
@@ -109,32 +134,59 @@ def upload_file_bytes(
 ):
     meta_data = FileMeta(**json.loads(meta))
     status = base.add_gif(Gif_added(text=meta_data.text, video=file.file.read()))
-    return Response(
-        headers={"status":status}
-    )
-# @app.post("/file/add_desc")
-# def add_desc(
-#     file: UploadFile = File(...),
-#     meta: str = Form(...),
-# ):
-#     meta_data = FileMeta(**json.loads(meta))
-#     id=base.get_id_gif(file.file.read())
-#     if(id==-1):
-#         return
-#     base.add_description(meta_data.text, id)
-#     return
-# def upload_file(file: UploadFile):
-#   base.add_gif(Gif_added(text="gay2", video=file.file.read()))
-#  return 
+    return Response(status_code=status["status"])
+@app.post("/file/add_desc")
+def add_desc(
+    file: UploadFile = File(...),
+    meta: str = Form(...),
+):
+    meta_data = Desc(**json.loads(meta))
+    dt=base.get_id_gif(file.file.read())
+    if(dt["status"]!=200):
+        return Response(status_code=dt["status"])
+    id=dt["data"]
+    for i in meta_data.lst:
+        dt=base.add_description(i, id)
+        if(dt["status"]!=200):
+            return Response(status_code=dt["status"])
+    return Response()
 @app.get("/sim")
 def get_sim(text: str):
-    text_gif, file=base.get_sim(text)
+    dt=base.get_sim(text)
+    if(dt["status"]!=200):
+        return Response(
+            status_code=dt["status"]
+        )
+    text_gif, file = dt["data"]
     h=text_gif.encode()
     return Response(
         content=file,
         media_type="application/octet-stream",
         headers={"text_gif": str(h, encoding="Latin-1")}
     )
+@app.post("/cnt_desc")
+def get_cnt(
+    file: UploadFile = File(...)
+):
+    dt=base.get_id_gif(file.file.read())
+    if(dt["status"]!=200):
+        return Response(status_code=dt["status"])
+    gif_id=dt["data"]
+    cnt=base.get_cnt_desc(gif_id)
+    return Response(
+        headers={"count":str(cnt["data"])}
+    )
+@app.delete("/del")
+def delete_gif(
+    file: UploadFile = File(...)
+):
+    dt=base.get_id_gif(file.file.read())
+    if dt["status"]!=200:
+        return Response(status_code=404)
+    dt=base.del_gif(dt["data"])
+    if dt["status"]!=200:
+        return Response(status_code=404)
+    return Response()
 if __name__ == "__main__":
      logging.basicConfig(filename='lg.log')
      import uvicorn
