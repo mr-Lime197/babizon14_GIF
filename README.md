@@ -6,3 +6,4 @@
 1. Запустить main.py
 2. Запустить web_server.py
 3. перейти на http://127.0.0.1:8080/docs
+Бот - @babizon14_find_bot
