@@ -188,11 +188,6 @@ def delete_gif(
         return Response(status_code=404)
     return Response()
 if __name__ == "__main__":
-<<<<<<< HEAD:main_old_web.py
-    import uvicorn
-    uvicorn.run(app, host="10.89.0.240", port=8080)        
-=======
      logging.basicConfig(filename='lg.log')
      import uvicorn
      uvicorn.run(app, host="127.0.0.1", port=80)
->>>>>>> 0ce7d12d04f38289aba55f401e6fbae3b9855116:main.py
