@@ -38,8 +38,8 @@ class Gif_info_db(Base):
     emb=relationship("Gif_emb_db", back_populates="info")
 class Model:
     def __init__(self):
-        self.__tokenizer=AutoTokenizer.from_pretrained("nlptown/bert-base-multilingual-uncased-sentiment")
-        self.__model=AutoModel.from_pretrained("nlptown/bert-base-multilingual-uncased-sentiment")
+        self.__tokenizer=AutoTokenizer.from_pretrained("ai-forever/sbert_large_nlu_ru")
+        self.__model=AutoModel.from_pretrained("ai-forever/sbert_large_nlu_ru")
     def get_emb(self, text: str) -> bytes:
         inputs = self.__tokenizer(text, return_tensors="pt", padding=True, truncation=True)
         with torch.no_grad():
