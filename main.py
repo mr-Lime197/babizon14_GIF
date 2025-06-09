@@ -8,12 +8,13 @@ import logging
 from fastapi import FastAPI, Form, Request, File, UploadFile
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import  create_engine, Column, Integer, String, LargeBinary, ForeignKey, delete
-from sqlalchemy.orm import DeclarativeBase, Session, relationship
+from sqlalchemy import create_engine, Column, Integer, String, LargeBinary, ForeignKey, delete, select
+from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from fastapi.responses import FileResponse
 from fastapi.responses import Response
 import io
-database="sqlite:///data.db"
+database="sqlite+aiosqlite:///data.db"
 
 class Base(DeclarativeBase): pass
 class FileMeta(BaseModel):
@@ -53,141 +54,166 @@ class Model:
         return(np.dot(diff, diff))
 class db:
     def __init__(self, path:str, model:Model):
-        db.__path=path
-        db.__model=model
-        db.__engine=create_engine(path)
-        Base.metadata.create_all(bind=db.__engine)
-    def add_description(self, txt_desc: str, gif_id: int):
-        with Session(autoflush=False, bind=db.__engine) as s:
-            gif_emb=Gif_emb_db(description=txt_desc, embeding=db.__model.get_emb(txt_desc))
-            if s.query(Gif_info_db).filter(Gif_info_db.id==gif_id).count()==0:
-                logging.error(f"gif with id {gif_id} is not exist")
-                return {"status":404}
-            gif_info=s.query(Gif_info_db).filter(Gif_info_db.id==gif_id).first()
-            gif_emb.info=gif_info
-            s.add(gif_emb)
-            logging.info(f"description {txt_desc} add for gif {gif_id}")
-            s.commit()
-        return {"status":200}
-    def add_gif(self, Gif:Gif_added) -> dict:
-        gif=Gif_info_db(text=Gif.text, file=Gif.video)
-        with Session(autoflush=False, bind=db.__engine) as s:
-            if s.query(Gif_info_db).filter(Gif_info_db.file==gif.file).first():
-                logging.error(f'GIFs: {gif.text} is exist')
-                return {"status":404}
-            s.add(gif)
-            logging.info(f"added gif {Gif.text}")
-            s.commit()
-            self.add_description(txt_desc=gif.text, gif_id=gif.id)
+        self.path = path
+        self.model = model
+        self.engine = create_async_engine(path)
+        self.async_session = async_sessionmaker(self.engine, expire_on_commit=False)
+        
+    async def init_models(self):
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    
+    async def add_description(self, txt_desc: str, gif_id: int):
+        async with self.async_session() as s:
+            async with s.begin():
+                result = await s.execute(select(Gif_info_db).where(Gif_info_db.id == gif_id))
+                if result.scalar_one_or_none() is None:
+                    logging.error(f"gif with id {gif_id} is not exist")
+                    return {"status":404}
+                
+                gif_emb = Gif_emb_db(
+                    description=txt_desc, 
+                    embeding=self.model.get_emb(txt_desc),
+                    id_gif=gif_id
+                )
+                s.add(gif_emb)
+                logging.info(f"description {txt_desc} add for gif {gif_id}")
         return {"status":200}
     
-
-    def get_id_gif(self, file:bytes) -> dict:
-        with Session(autoflush=False, bind=db.__engine) as s:
-            if s.query(Gif_info_db).filter(Gif_info_db.file==file).count()==0:
+    async def add_gif(self, Gif:Gif_added) -> dict:
+        async with self.async_session() as s:
+            async with s.begin():
+                result = await s.execute(select(Gif_info_db).where(Gif_info_db.file == Gif.video))
+                if result.scalar_one_or_none():
+                    logging.error(f'GIFs: {Gif.text} is exist')
+                    return {"status":404}
+                
+                gif = Gif_info_db(text=Gif.text, file=Gif.video)
+                s.add(gif)
+                await s.flush()  # Получаем ID перед коммитом
+                logging.info(f"added gif {Gif.text}")
+                await self.add_description(txt_desc=gif.text, gif_id=gif.id)
+        return {"status":200}
+    
+    async def get_id_gif(self, file:bytes) -> dict:
+        async with self.async_session() as s:
+            result = await s.execute(select(Gif_info_db).where(Gif_info_db.file == file))
+            gif = result.scalar_one_or_none()
+            if gif is None:
                 logging.error("gif is not exist")
                 return {"status":404, "data":None}
-            return {"status":200, "data":s.query(Gif_info_db).filter(Gif_info_db.file==file).first().id}
-        
-
-    def get_sim(self, text: str) -> dict:
-        model=self.__model
+            return {"status":200, "data":gif.id}
+    
+    async def get_sim(self, text: str) -> dict:
+        model=self.model
         bestsim=0
         bestid=-1
         emb=np.frombuffer(model.get_emb(text), dtype=np.float32)
-        with Session(autoflush=False, bind=self.__engine) as db:
-            h=db.query(Gif_emb_db)
-            if h.count()==0:
+        async with self.async_session() as s:
+            result = await s.execute(select(Gif_emb_db))
+            all_embs = result.scalars().all()
+            
+            if not all_embs:
                 logging.error("database is empty")
                 return {"status":500, "data":None}
-            for row in h:
+            
+            for row in all_embs:
                 curemb=np.frombuffer(row.embeding, dtype=np.float32)
                 sim=model.dist(emb, curemb)
                 if(sim<bestsim or bestid==-1):
                     bestsim=sim
                     bestid=row.id_gif
-            h=db.query(Gif_info_db).filter(Gif_info_db.id==bestid).first()
-            return {"status":200, "data":(h.text, h.file)}
-        
-
-    def get_cnt_desc(self, gif_id: int) -> dict:
-        with Session(autoflush=False, bind=db.__engine) as s:
-            return {"status":200, "data":s.query(Gif_emb_db).filter(Gif_emb_db.id_gif==gif_id).count()}
-        
-
-    def del_gif(self, gif_id:int) ->dict:
-        cnt=self.get_cnt_desc(gif_id)
-        if cnt["status"]==200 and cnt["data"]>0:
-            with Session(autoflush=False, bind=db.__engine) as s:
-                s.query(Gif_info_db).filter(Gif_info_db.id==gif_id).delete()
-                s.query(Gif_emb_db).filter(Gif_emb_db.id_gif==gif_id).delete()
-                s.commit()
+            
+            gif_info = await s.get(Gif_info_db, bestid)
+            return {"status":200, "data":(gif_info.text, gif_info.file)}
+    
+    async def get_cnt_desc(self, gif_id: int) -> dict:
+        async with self.async_session() as s:
+            result = await s.execute(select(Gif_emb_db).where(Gif_emb_db.id_gif == gif_id))
+            count = len(result.scalars().all())
+            return {"status":200, "data":count}
+    
+    async def del_gif(self, gif_id:int) ->dict:
+        cnt = await self.get_cnt_desc(gif_id)
+        if cnt["status"] == 200 and cnt["data"] > 0:
+            async with self.async_session() as s:
+                async with s.begin():
+                    await s.execute(delete(Gif_info_db).where(Gif_info_db.id == gif_id))
+                    await s.execute(delete(Gif_emb_db).where(Gif_emb_db.id_gif == gif_id))
             return {"status":200}
         return {"status":404}
+
 app = FastAPI()
 model=Model()
 base=db(database, model)
+base.init_models()
+
 @app.post("/file/upload-file")
-def upload_file_bytes(
+async def upload_file_bytes(
     file: UploadFile = File(...),
     meta: str = Form(...),
 ):
     meta_data = FileMeta(**json.loads(meta))
-    status = base.add_gif(Gif_added(text=meta_data.text, video=file.file.read()))
+    video_bytes = await file.read()
+    status = await base.add_gif(Gif_added(text=meta_data.text, video=video_bytes))
     return Response(status_code=status["status"])
+
 @app.post("/file/add_desc")
-def add_desc(
+async def add_desc(
     file: UploadFile = File(...),
     meta: str = Form(...),
 ):
     meta_data = Desc(**json.loads(meta))
-    dt=base.get_id_gif(file.file.read())
+    video_bytes = await file.read()
+    dt = await base.get_id_gif(video_bytes)
     if(dt["status"]!=200):
         return Response(status_code=dt["status"])
     id=dt["data"]
     for i in meta_data.lst:
-        dt=base.add_description(i, id)
+        dt = await base.add_description(i, id)
         if(dt["status"]!=200):
             return Response(status_code=dt["status"])
     return Response()
+
 @app.get("/sim")
-def get_sim(text: str):
-    dt=base.get_sim(text)
+async def get_sim(text: str):
+    dt = await base.get_sim(text)
     if(dt["status"]!=200):
-        return Response(
-            status_code=dt["status"]
-        )
+        return Response(status_code=dt["status"])
     text_gif, file = dt["data"]
-    h=text_gif.encode()
+    h = text_gif.encode()
     return Response(
         content=file,
         media_type="application/octet-stream",
         headers={"text_gif": str(h, encoding="Latin-1")}
     )
+
 @app.post("/cnt_desc")
-def get_cnt(
+async def get_cnt(
     file: UploadFile = File(...)
 ):
-    dt=base.get_id_gif(file.file.read())
-    if(dt["status"]!=200):
+    video_bytes = await file.read()
+    dt = await base.get_id_gif(video_bytes)
+    if dt["status"] != 200:
         return Response(status_code=dt["status"])
-    gif_id=dt["data"]
-    cnt=base.get_cnt_desc(gif_id)
-    return Response(
-        headers={"count":str(cnt["data"])}
-    )
+    gif_id = dt["data"]
+    cnt = await base.get_cnt_desc(gif_id)
+    return Response(headers={"count": str(cnt["data"])})
+
 @app.delete("/del")
-def delete_gif(
+async def delete_gif(
     file: UploadFile = File(...)
 ):
-    dt=base.get_id_gif(file.file.read())
-    if dt["status"]!=200:
+    video_bytes = await file.read()
+    dt = await base.get_id_gif(video_bytes)
+    if dt["status"] != 200:
         return Response(status_code=404)
-    dt=base.del_gif(dt["data"])
-    if dt["status"]!=200:
+    dt = await base.del_gif(dt["data"])
+    if dt["status"] != 200:
         return Response(status_code=404)
     return Response()
+
 if __name__ == "__main__":
-     logging.basicConfig(filename='lg.log')
-     import uvicorn
-     uvicorn.run(app, host="127.0.0.1", port=80)
+    logging.basicConfig(filename='lg.log')
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=80)
