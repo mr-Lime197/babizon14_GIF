@@ -135,7 +135,7 @@ async def desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         url="http://127.0.0.1:80/cnt_desc",
         files={"file": ("animation.mp4", gif_data, "video/mp4")},
     )
-    if response.status_code == 200 or int(response2.headers["count"])<2:
+    if response.status_code == 200 or (response2.status_code==200 and int(response2.headers["count"])<2):
         menu=[["Назад"]]
         await update.message.reply_text(
             text="Отлично, теперь добавь от 1 до 3 описаний этой гифки\nэто необходимо для лучшего поиска\n",
@@ -143,6 +143,8 @@ async def desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         context.user_data["desc"]=[]
         return DESC2
+    if response2.status_code!=200:
+        await update.message.reply_text("Ошибка: Неверный формат гифки")
     await update.message.reply_text("Ошибка: Гифка уже была добавленна ранее")
     menu = [["Добавить новую гифку", "Удалить гифку"],
             ["Назад"]]

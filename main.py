@@ -90,7 +90,6 @@ class db:
                 
                 gif = Gif_info_db(text=Gif.text, file=Gif.video)
                 s.add(gif)
-                await s.flush()  # Получаем ID перед коммитом
                 logging.info(f"added gif {Gif.text}")
                 await self.add_description(txt_desc=gif.text, gif_id=gif.id)
         return {"status":200}
@@ -146,7 +145,9 @@ class db:
 app = FastAPI()
 model=Model()
 base=db(database, model)
-base.init_models()
+@app.on_event("startup")
+async def startup():
+    await base.init_models()
 
 @app.post("/file/upload-file")
 async def upload_file_bytes(
