@@ -37,6 +37,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def send_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Отправляет файл"""
     text = update.message.text
+    mes=await update.message.reply_text(
+        "Загрузка..."
+    )
     response = requests.get("http://127.0.0.1:80/sim", params={"text": text})
     if response.status_code!=200:
         await update.message.reply_text(
@@ -45,6 +48,7 @@ async def send_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return GLOB
     text = str(response.headers["text_gif"].encode("Latin-1"), encoding="utf-8")
     byte_sequence = response.content
+    await context.bot.delete_message(update.message.chat.id, mes.id)
     await update.message.reply_document(
         document=byte_sequence,
         filename="generated_file.mp4",
